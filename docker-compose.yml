@@ -15,7 +15,9 @@ services:
       retries: 10
 
   app:
-    build: .
+    # Built by GitHub Actions (.github/workflows/docker.yml). The server only pulls it.
+    image: ghcr.io/andycqos74/masterpop:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       db:

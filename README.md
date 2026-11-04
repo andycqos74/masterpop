@@ -10,10 +10,21 @@ Listen however you like, then enter your round scores here, see your history and
 
 ## Run with Docker
 
+GitHub Actions builds the image on every push to `main` and publishes it to
+`ghcr.io/andycqos74/masterpop:latest`, so the server only pulls it.
+
 ```bash
 cp .env.example .env      # then set a long random POSTGRES_PASSWORD
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+The package is private by default. Either make it public (GitHub profile > Packages > masterpop >
+Package settings > Change visibility) or log the server in once with a token that has `read:packages`:
+`docker login ghcr.io -u andycqos74`.
+
+To build locally instead, run `docker build -t ghcr.io/andycqos74/masterpop:latest .` first.
+In Dockge, redeploy after each push to pull the new image.
 
 The app listens on `APP_PORT` (default 3000). Put it behind HTTPS (for example a Cloudflare Tunnel);
 secure cookies and PWA install both need it. For plain-http testing on localhost set `COOKIE_SECURE=false`.
