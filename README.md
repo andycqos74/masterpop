@@ -41,10 +41,14 @@ npm run migrate
 npm run dev
 ```
 
-## Customising the rounds
+## Scoring format
 
-Round names and maximum points live in `src/lib/rounds.ts`. Check them against the real show format.
-Keys are stored in the database, so change labels freely but don't rename keys.
+Each weekday has two Popmaster games (Round 1 and Round 2). Each game is three sets of
+[question 3 pts, question 3 pts, bonus 6 pts] plus a final question worth 3 pts, so the
+maximum is 3 x 12 + 3 = 39. On the score screen you tap each question you got right.
+
+The format is defined in `src/lib/rounds.ts`. Question keys are stored in the database, so change
+labels freely but don't rename keys.
 
 ## Known limits
 

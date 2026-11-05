@@ -14,7 +14,7 @@ import {
   throttled,
   verifyPassword,
 } from "@/lib/auth";
-import { MAX_TOTAL, ROUNDS, londonToday } from "@/lib/rounds";
+import { QUESTIONS, SLOTS, londonToday, scoreOf } from "@/lib/rounds";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -88,32 +88,46 @@ export async function logout() {
   redirect("/login");
 }
 
+export type SavedGame = { answers: Record<string, boolean>; notes: string };
+
+export async function loadGame(playedOn: string, slot: number): Promise<SavedGame | null> {
+  const user = await requireUser();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(playedOn)) return null;
+  const rows = await query<{ round_key: string; points: number; notes: string }>(
+    `SELECT gr.round_key, gr.points, g.notes
+       FROM games g JOIN game_rounds gr ON gr.game_id = g.id
+      WHERE g.user_id=$1 AND g.played_on=$2 AND g.slot=$3`,
+    [user.id, playedOn, slot]
+  );
+  if (rows.length === 0) return null;
+  return {
+    answers: Object.fromEntries(rows.map((r) => [r.round_key, r.points > 0])),
+    notes: rows[0].notes,
+  };
+}
+
 export async function saveGame(input: {
   playedOn: string;
-  scores: Record<string, number>;
+  slot: number;
+  answers: Record<string, boolean>;
   notes: string;
 }): Promise<FormState> {
   const user = await requireUser();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.playedOn)) return { error: "Invalid date." };
   if (input.playedOn > londonToday()) return { error: "Date can't be in the future." };
 
-  let total = 0;
-  const rows: [string, number][] = [];
-  for (const r of ROUNDS) {
-    const v = Number(input.scores[r.key] ?? 0);
-    if (!Number.isInteger(v) || v < 0 || v > r.max) return { error: `${r.label} must be 0-${r.max}.` };
-    total += v;
-    rows.push([r.key, v]);
-  }
-  if (total > MAX_TOTAL) return { error: "Total too high." };
+  if (!(SLOTS as readonly number[]).includes(input.slot)) return { error: "Invalid round." };
+
+  const total = scoreOf(input.answers);
+  const rows: [string, number][] = QUESTIONS.map((q) => [q.key, input.answers[q.key] ? q.points : 0]);
   const notes = (input.notes ?? "").slice(0, 500);
 
   await withTx(async (c) => {
     const g = await c.query(
-      `INSERT INTO games(user_id, played_on, total, notes) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (user_id, played_on) DO UPDATE SET total=EXCLUDED.total, notes=EXCLUDED.notes
+      `INSERT INTO games(user_id, played_on, slot, total, notes) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, played_on, slot) DO UPDATE SET total=EXCLUDED.total, notes=EXCLUDED.notes
        RETURNING id`,
-      [user.id, input.playedOn, total, notes]
+      [user.id, input.playedOn, input.slot, total, notes]
     );
     const gid = g.rows[0].id as string;
     await c.query("DELETE FROM game_rounds WHERE game_id=$1", [gid]);

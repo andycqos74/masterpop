@@ -54,7 +54,7 @@ export default async function Leaderboard({
         ) : (
           <table>
             <thead>
-              <tr><th>#</th><th>Player</th><th className="num">Avg</th><th className="num">Best</th><th className="num">Games</th></tr>
+              <tr><th>#</th><th>Player</th><th className="num">Avg</th><th className="num">Best</th><th className="num">Games</th><th className="num">Total</th></tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
@@ -64,6 +64,7 @@ export default async function Leaderboard({
                   <td className="num">{r.avg}</td>
                   <td className="num">{r.best}</td>
                   <td className="num">{r.games}</td>
+                  <td className="num">{r.total}</td>
                 </tr>
               ))}
             </tbody>

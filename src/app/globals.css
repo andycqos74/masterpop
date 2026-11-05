@@ -47,3 +47,13 @@ nav.bottom a.on { color: var(--accent); font-weight: 700; }
 .stats b { display: block; font-size: 1.5rem; color: var(--accent); }
 .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 code.invite { font-size: 1.1rem; letter-spacing: .08em; background: #0c111c; padding: 4px 8px; border-radius: 8px; }
+.tabs button.tab { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-weight: 600; }
+.tabs button.tab.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.total .of { font-size: 1.4rem; color: var(--muted); font-weight: 600; }
+.qrow { display: flex; gap: 8px; margin-top: 10px; }
+.q { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 6px; border-radius: 14px; border: 1px solid var(--line); background: #0c111c; color: var(--text); min-height: 76px; }
+.q.bonus { flex: 1.4; }
+.q .qname { font-weight: 600; font-size: .95rem; }
+.q .qpts { color: var(--muted); font-size: .8rem; }
+.q.right { background: var(--good); border-color: var(--good); color: #04210f; }
+.q.right .qpts { color: #04210f; }

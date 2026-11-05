@@ -1,11 +1,11 @@
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { ROUNDS, MAX_TOTAL } from "@/lib/rounds";
+import { MAX_TOTAL } from "@/lib/rounds";
 import { deleteGame } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-type Game = { id: string; played_on: string; total: number; notes: string };
+type Game = { id: string; played_on: string; slot: number; total: number; notes: string };
 
 function Chart({ games }: { games: Game[] }) {
   const pts = [...games].reverse().slice(-30);
@@ -28,16 +28,26 @@ function Chart({ games }: { games: Game[] }) {
 export default async function History() {
   const user = await requireUser();
   const games = await query<Game>(
-    "SELECT id, to_char(played_on,'YYYY-MM-DD') AS played_on, total, notes FROM games WHERE user_id=$1 ORDER BY played_on DESC",
+    "SELECT id, to_char(played_on,'YYYY-MM-DD') AS played_on, slot, total, notes FROM games WHERE user_id=$1 ORDER BY played_on DESC, slot DESC",
     [user.id]
   );
-  const per = await query<{ round_key: string; avg: string }>(
-    `SELECT gr.round_key, avg(gr.points)::numeric(5,2) AS avg
-       FROM game_rounds gr JOIN games g ON g.id=gr.game_id
-      WHERE g.user_id=$1 GROUP BY gr.round_key`,
+  const acc = await query<{ kind: string; pct: string }>(
+    `SELECT CASE WHEN gr.round_key LIKE '%bonus' THEN 'bonus'
+                 WHEN gr.round_key = 'final' THEN 'final'
+                 ELSE 'standard' END AS kind,
+            round(avg((gr.points > 0)::int) * 100) AS pct
+       FROM game_rounds gr JOIN games g ON g.id = gr.game_id
+      WHERE g.user_id=$1 GROUP BY 1`,
     [user.id]
   );
-  const avgOf = (k: string) => per.find((p) => p.round_key === k)?.avg ?? "-";
+  const slotAvg = await query<{ slot: number; avg: string }>(
+    "SELECT slot, round(avg(total), 1) AS avg FROM games WHERE user_id=$1 GROUP BY slot ORDER BY slot",
+    [user.id]
+  );
+  const pctOf = (k: string) => {
+    const v = acc.find((a) => a.kind === k)?.pct;
+    return v === undefined ? "-" : `${v}%`;
+  };
   const totals = games.map((g) => g.total);
   const avg = totals.length ? (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1) : "-";
   const best = totals.length ? Math.max(...totals) : "-";
@@ -52,11 +62,22 @@ export default async function History() {
       </div>
       <div className="card"><Chart games={games} /></div>
       <div className="card">
-        <div className="muted">Average per round</div>
+        <div className="muted">Questions you get right</div>
         <table>
           <tbody>
-            {ROUNDS.map((r) => (
-              <tr key={r.key}><td>{r.label}</td><td className="num">{avgOf(r.key)} / {r.max}</td></tr>
+            <tr><td>Standard (3 pts)</td><td className="num">{pctOf("standard")}</td></tr>
+            <tr><td>Bonus (6 pts)</td><td className="num">{pctOf("bonus")}</td></tr>
+            <tr><td>Final (3 pts)</td><td className="num">{pctOf("final")}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <div className="muted">Average score by round</div>
+        <table>
+          <tbody>
+            {slotAvg.length === 0 && <tr><td className="muted">No games yet.</td></tr>}
+            {slotAvg.map((r) => (
+              <tr key={r.slot}><td>Round {r.slot}</td><td className="num">{r.avg} / {MAX_TOTAL}</td></tr>
             ))}
           </tbody>
         </table>
@@ -72,14 +93,14 @@ export default async function History() {
               {games.map((g) => (
                 <tr key={g.id}>
                   <td>
-                    {g.played_on}
+                    {g.played_on} · Round {g.slot}
                     {g.notes && <div className="muted">{g.notes}</div>}
                   </td>
-                  <td className="num">{g.total}</td>
+                  <td className="num">{g.total} / {MAX_TOTAL}</td>
                   <td className="num">
                     <form action={deleteGame}>
                       <input type="hidden" name="id" value={g.id} />
-                      <button className="btn small ghost" aria-label={`Delete ${g.played_on}`}>Delete</button>
+                      <button className="btn small ghost" aria-label={`Delete ${g.played_on} round ${g.slot}`}>Delete</button>
                     </form>
                   </td>
                 </tr>

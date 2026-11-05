@@ -1,89 +1,144 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
-import { saveGame, type FormState } from "@/app/actions";
-import { ROUNDS } from "@/lib/rounds";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { loadGame, saveGame, type FormState } from "@/app/actions";
+import { MAX_TOTAL, QUESTIONS, SETS, SLOTS, scoreOf } from "@/lib/rounds";
 
-type Props = {
-  today: string;
-  initial: Record<string, number>;
-  initialNotes: string;
-};
+type Answers = Record<string, boolean>;
 
-export default function ScoreForm({ today, initial, initialNotes }: Props) {
+export default function ScoreForm({ today }: { today: string }) {
   const [date, setDate] = useState(today);
-  const [scores, setScores] = useState<Record<string, number>>(
-    Object.fromEntries(ROUNDS.map((r) => [r.key, initial[r.key] ?? 0]))
-  );
-  const [notes, setNotes] = useState(initialNotes);
+  const [slot, setSlot] = useState<number>(1);
+  const [answers, setAnswers] = useState<Answers>({});
+  const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<FormState>();
+  const [ready, setReady] = useState(false);
   const [pending, start] = useTransition();
+  const loadId = useRef(0);
+
+  const draftKey = `draft:${date}:${slot}`;
+
+  // Load the saved game (or an unsaved local draft) whenever the date or round changes.
+  useEffect(() => {
+    const id = ++loadId.current;
+    setReady(false);
+    setMsg(undefined);
+    let draft: { answers: Answers; notes: string } | null = null;
+    try {
+      draft = JSON.parse(localStorage.getItem(draftKey) ?? "null");
+    } catch {}
+    loadGame(date, slot)
+      .catch(() => null)
+      .then((saved) => {
+        if (id !== loadId.current) return; // a newer load superseded this one
+        const src = saved ?? draft;
+        setAnswers(src?.answers ?? {});
+        setNotes(src?.notes ?? "");
+        setReady(true);
+      });
+  }, [date, slot, draftKey]);
 
   // Keep an unsaved draft so a dropped signal or reload doesn't lose the score.
   useEffect(() => {
-    if (date !== today) return;
-    const raw = localStorage.getItem(`draft:${today}`);
-    if (raw && Object.keys(initial).length === 0) {
-      try {
-        const d = JSON.parse(raw);
-        setScores((s) => ({ ...s, ...d.scores }));
-        setNotes(d.notes ?? "");
-      } catch {}
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(`draft:${today}`, JSON.stringify({ scores, notes }));
-  }, [scores, notes, today]);
+    if (ready) localStorage.setItem(draftKey, JSON.stringify({ answers, notes }));
+  }, [answers, notes, ready, draftKey]);
 
-  const total = ROUNDS.reduce((n, r) => n + (scores[r.key] ?? 0), 0);
-  const bump = (key: string, delta: number, max: number) =>
-    setScores((s) => ({ ...s, [key]: Math.min(max, Math.max(0, (s[key] ?? 0) + delta)) }));
+  const total = scoreOf(answers);
+  const toggle = (key: string) => setAnswers((a) => ({ ...a, [key]: !a[key] }));
 
   function save() {
     setMsg(undefined);
     start(async () => {
       try {
-        setMsg(await saveGame({ playedOn: date, scores, notes }));
+        const res = await saveGame({ playedOn: date, slot, answers, notes });
+        if (res?.ok) localStorage.removeItem(draftKey);
+        setMsg(res);
       } catch {
         setMsg({ error: "Couldn't save - check your connection and try again. Your score is kept on this device." });
       }
     });
   }
 
+  const sets = Array.from({ length: SETS }, (_, i) => i + 1);
+  const finalQ = QUESTIONS.find((q) => q.kind === "final")!;
+
   return (
     <div>
-      <div className="card">
-        <div className="muted" style={{ textAlign: "center" }}>Total</div>
-        <div className="total">{total}</div>
+      <div className="tabs">
+        {SLOTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`tab ${s === slot ? "on" : ""}`}
+            onClick={() => setSlot(s)}
+          >
+            Round {s}
+          </button>
+        ))}
       </div>
 
-      {ROUNDS.map((r) => (
-        <div className="card round" key={r.key}>
-          <div>
-            <div className="name">{r.label}</div>
-            <div className="muted">{r.hint} · max {r.max}</div>
-          </div>
-          <div className="stepper">
-            <button type="button" aria-label={`${r.label} minus`} onClick={() => bump(r.key, -1, r.max)}>−</button>
-            <div className="val">{scores[r.key] ?? 0}</div>
-            <button type="button" className="plus" aria-label={`${r.label} plus`} onClick={() => bump(r.key, 1, r.max)}>+</button>
-          </div>
+      <div className="card">
+        <div className="muted" style={{ textAlign: "center" }}>Score</div>
+        <div className="total">
+          {total}
+          <span className="of"> / {MAX_TOTAL}</span>
         </div>
-      ))}
+      </div>
+
+      {sets.map((s) => {
+        const qs = QUESTIONS.filter((q) => q.set === s);
+        const sub = scoreOf(Object.fromEntries(qs.map((q) => [q.key, answers[q.key]])));
+        return (
+          <div className="card" key={s}>
+            <div className="row">
+              <strong>Set {s}</strong>
+              <span className="muted">{sub} / {qs.reduce((n, q) => n + q.points, 0)}</span>
+            </div>
+            <div className="qrow">
+              {qs.map((q) => (
+                <button
+                  key={q.key}
+                  type="button"
+                  className={`q ${answers[q.key] ? "right" : ""} ${q.kind === "bonus" ? "bonus" : ""}`}
+                  aria-pressed={!!answers[q.key]}
+                  onClick={() => toggle(q.key)}
+                >
+                  <span className="qname">{q.label}</span>
+                  <span className="qpts">{q.points} pts</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="card">
+        <div className="row"><strong>Final</strong><span className="muted">{answers[finalQ.key] ? finalQ.points : 0} / {finalQ.points}</span></div>
+        <div className="qrow">
+          <button
+            type="button"
+            className={`q ${answers[finalQ.key] ? "right" : ""}`}
+            aria-pressed={!!answers[finalQ.key]}
+            onClick={() => toggle(finalQ.key)}
+          >
+            <span className="qname">{finalQ.label}</span>
+            <span className="qpts">{finalQ.points} pts</span>
+          </button>
+        </div>
+      </div>
 
       <div className="card">
         <label htmlFor="date">Date</label>
-        <input id="date" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} />
+        <input id="date" type="date" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} />
         <label htmlFor="notes">Notes (optional)</label>
         <textarea id="notes" rows={2} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
 
-      <button className="btn" onClick={save} disabled={pending}>
-        {pending ? "Saving..." : "Save score"}
+      <button className="btn" onClick={save} disabled={pending || !ready}>
+        {pending ? "Saving..." : ready ? `Save round ${slot}` : "Loading..."}
       </button>
       {msg?.error && <p className="error">{msg.error}</p>}
       {msg?.ok && <p className="ok">{msg.ok}</p>}
-      <p className="muted">Saving again for the same date updates that day's score.</p>
+      <p className="muted">Tap a question when you got it right. Saving again for the same date and round updates it.</p>
     </div>
   );
 }
