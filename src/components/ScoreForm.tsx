@@ -84,35 +84,23 @@ export default function ScoreForm({ today }: { today: string }) {
         </div>
       </div>
 
-      {sets.map((s) => {
-        const qs = QUESTIONS.filter((q) => q.set === s);
-        const sub = scoreOf(Object.fromEntries(qs.map((q) => [q.key, answers[q.key]])));
-        return (
-          <div className="card" key={s}>
-            <div className="row">
-              <strong>Set {s}</strong>
-              <span className="muted">{sub} / {qs.reduce((n, q) => n + q.points, 0)}</span>
-            </div>
-            <div className="qrow">
-              {qs.map((q) => (
-                <button
-                  key={q.key}
-                  type="button"
-                  className={`q ${answers[q.key] ? "right" : ""} ${q.kind === "bonus" ? "bonus" : ""}`}
-                  aria-pressed={!!answers[q.key]}
-                  onClick={() => toggle(q.key)}
-                >
-                  <span className="qname">{q.label}</span>
-                  <span className="qpts">{q.points} pts</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-
       <div className="card">
-        <div className="row"><strong>Final</strong><span className="muted">{answers[finalQ.key] ? finalQ.points : 0} / {finalQ.points}</span></div>
+        {sets.map((s) => (
+          <div className="qrow" key={s}>
+            {QUESTIONS.filter((q) => q.set === s).map((q) => (
+              <button
+                key={q.key}
+                type="button"
+                className={`q ${answers[q.key] ? "right" : ""} ${q.kind === "bonus" ? "bonus" : ""}`}
+                aria-pressed={!!answers[q.key]}
+                onClick={() => toggle(q.key)}
+              >
+                <span className="qname">{q.label}</span>
+                <span className="qpts">{q.points} pts</span>
+              </button>
+            ))}
+          </div>
+        ))}
         <div className="qrow">
           <button
             type="button"
