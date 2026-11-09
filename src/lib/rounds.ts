@@ -30,7 +30,7 @@ export const QUESTIONS: Question[] = [
 
 export const MAX_TOTAL = QUESTIONS.reduce((n, q) => n + q.points, 0); // 39
 
-export function scoreOf(answers: Record<string, boolean>): number {
+export function scoreOf(answers: Record<string, boolean | undefined>): number {
   return QUESTIONS.reduce((n, q) => n + (answers[q.key] ? q.points : 0), 0);
 }
 
