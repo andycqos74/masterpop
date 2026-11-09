@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { londonToday } from "@/lib/rounds";
+import { fmtYears, londonToday } from "@/lib/rounds";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +27,11 @@ export default async function Leaderboard({
   const period: Period = sp.p && sp.p in PERIODS ? (sp.p as Period) : "week";
 
   const rows = await query<{
-    id: string; display_name: string; games: string; avg: string; best: number; total: string;
+    id: string; display_name: string; games: string; avg: string; best: number; total: string; yrs: string | null;
   }>(
     `SELECT u.id, u.display_name, count(*) AS games,
-            round(avg(g.total), 1) AS avg, max(g.total) AS best, sum(g.total) AS total
+            round(avg(g.total), 1) AS avg, max(g.total) AS best, sum(g.total) AS total,
+            round(avg(abs(g.years_out)), 1) AS yrs
        FROM games g JOIN users u ON u.id = g.user_id
       WHERE g.played_on >= $1
       GROUP BY u.id, u.display_name
@@ -52,9 +53,9 @@ export default async function Leaderboard({
         {rows.length === 0 ? (
           <p className="muted">No scores in this period yet.</p>
         ) : (
-          <table>
+          <table className="tight">
             <thead>
-              <tr><th>#</th><th>Player</th><th className="num">Avg</th><th className="num">Best</th><th className="num">Games</th><th className="num">Total</th></tr>
+              <tr><th>#</th><th>Player</th><th className="num">Avg</th><th className="num">Best</th><th className="num">Games</th><th className="num">Total</th><th className="num">Yrs out</th></tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
@@ -65,13 +66,14 @@ export default async function Leaderboard({
                   <td className="num">{r.best}</td>
                   <td className="num">{r.games}</td>
                   <td className="num">{r.total}</td>
+                  <td className="num">{r.yrs ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
-      <p className="muted">Ranked by average score per game.</p>
+      <p className="muted">Ranked by average score per game. Yrs out is the average miss in years, ignoring direction (lower is better).</p>
     </>
   );
 }

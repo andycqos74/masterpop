@@ -15,13 +15,17 @@ export const SETS = 3;
 export const SLOTS = [1, 2] as const;
 export type Slot = (typeof SLOTS)[number];
 
+// Questions are numbered 1-10 in the order they are asked; 3, 6 and 9 are the bonus questions.
 export const QUESTIONS: Question[] = [
-  ...Array.from({ length: SETS }, (_, i) => i + 1).flatMap<Question>((s) => [
-    { key: `s${s}q1`, label: "Question 1", points: 3, set: s, kind: "standard" },
-    { key: `s${s}q2`, label: "Question 2", points: 3, set: s, kind: "standard" },
-    { key: `s${s}bonus`, label: "Bonus", points: 6, set: s, kind: "bonus" },
-  ]),
-  { key: "final", label: "Final question", points: 3, set: null, kind: "final" },
+  ...Array.from({ length: SETS }, (_, i) => i + 1).flatMap<Question>((s) => {
+    const n = (s - 1) * 3;
+    return [
+      { key: `s${s}q1`, label: `Question ${n + 1}`, points: 3, set: s, kind: "standard" },
+      { key: `s${s}q2`, label: `Question ${n + 2}`, points: 3, set: s, kind: "standard" },
+      { key: `s${s}bonus`, label: `Question ${n + 3}`, points: 6, set: s, kind: "bonus" },
+    ];
+  }),
+  { key: "final", label: `Question ${SETS * 3 + 1}`, points: 3, set: null, kind: "final" },
 ];
 
 export const MAX_TOTAL = QUESTIONS.reduce((n, q) => n + q.points, 0); // 39
@@ -32,4 +36,13 @@ export function scoreOf(answers: Record<string, boolean>): number {
 
 export function londonToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+}
+
+export const YEARS_OUT_LIMIT = 1000;
+
+export function fmtYears(n: number | string | null | undefined, decimals = 0): string {
+  if (n === null || n === undefined || n === "") return "-";
+  const v = Number(n);
+  const t = v.toFixed(decimals);
+  return v > 0 ? `+${t}` : t;
 }

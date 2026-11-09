@@ -57,3 +57,5 @@ code.invite { font-size: 1.1rem; letter-spacing: .08em; background: #0c111c; pad
 .q .qpts { color: var(--muted); font-size: .8rem; }
 .q.right { background: var(--good); border-color: var(--good); color: #04210f; }
 .q.right .qpts { color: #04210f; }
+table.tight th, table.tight td { font-size: .8rem; padding: 8px 3px; }
+.stepper input { flex: 1; min-width: 0; }

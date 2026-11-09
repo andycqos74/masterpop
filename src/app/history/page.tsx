@@ -1,11 +1,11 @@
 import { requireUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { MAX_TOTAL } from "@/lib/rounds";
+import { MAX_TOTAL, fmtYears } from "@/lib/rounds";
 import { deleteGame } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-type Game = { id: string; played_on: string; slot: number; total: number; notes: string };
+type Game = { id: string; played_on: string; slot: number; total: number; notes: string; years_out: number | null };
 
 function Chart({ games }: { games: Game[] }) {
   const pts = [...games].reverse().slice(-30);
@@ -28,7 +28,7 @@ function Chart({ games }: { games: Game[] }) {
 export default async function History() {
   const user = await requireUser();
   const games = await query<Game>(
-    "SELECT id, to_char(played_on,'YYYY-MM-DD') AS played_on, slot, total, notes FROM games WHERE user_id=$1 ORDER BY played_on DESC, slot DESC",
+    "SELECT id, to_char(played_on,'YYYY-MM-DD') AS played_on, slot, total, notes, years_out FROM games WHERE user_id=$1 ORDER BY played_on DESC, slot DESC",
     [user.id]
   );
   const acc = await query<{ kind: string; pct: string }>(
@@ -44,6 +44,14 @@ export default async function History() {
     "SELECT slot, round(avg(total), 1) AS avg FROM games WHERE user_id=$1 GROUP BY slot ORDER BY slot",
     [user.id]
   );
+  const yo = (
+    await query<{ n: string; avg: string | null; abs: string | null; best: number | null }>(
+      `SELECT count(years_out) AS n, round(avg(years_out), 1) AS avg,
+              round(avg(abs(years_out)), 1) AS abs, min(abs(years_out)) AS best
+         FROM games WHERE user_id=$1`,
+      [user.id]
+    )
+  )[0];
   const pctOf = (k: string) => {
     const v = acc.find((a) => a.kind === k)?.pct;
     return v === undefined ? "-" : `${v}%`;
@@ -82,13 +90,28 @@ export default async function History() {
           </tbody>
         </table>
       </div>
+      <div className="card">
+        <div className="muted">Years out</div>
+        {Number(yo?.n ?? 0) === 0 ? (
+          <p className="muted">No years-out scores yet.</p>
+        ) : (
+          <table>
+            <tbody>
+              <tr><td>Average miss (ignoring direction)</td><td className="num">{yo.abs} yrs</td></tr>
+              <tr><td>Average (negative = you guess early)</td><td className="num">{fmtYears(yo.avg, 1)}</td></tr>
+              <tr><td>Closest</td><td className="num">{yo.best} yrs</td></tr>
+              <tr><td>Games with a year</td><td className="num">{yo.n}</td></tr>
+            </tbody>
+          </table>
+        )}
+      </div>
       <h2>All games</h2>
       <div className="card">
         {games.length === 0 ? (
           <p className="muted">No games yet.</p>
         ) : (
           <table>
-            <thead><tr><th>Date</th><th className="num">Score</th><th /></tr></thead>
+            <thead><tr><th>Date</th><th className="num">Score</th><th className="num">Yrs out</th><th /></tr></thead>
             <tbody>
               {games.map((g) => (
                 <tr key={g.id}>
@@ -97,6 +120,7 @@ export default async function History() {
                     {g.notes && <div className="muted">{g.notes}</div>}
                   </td>
                   <td className="num">{g.total} / {MAX_TOTAL}</td>
+                  <td className="num">{fmtYears(g.years_out)}</td>
                   <td className="num">
                     <form action={deleteGame}>
                       <input type="hidden" name="id" value={g.id} />

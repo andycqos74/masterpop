@@ -14,7 +14,7 @@ import {
   throttled,
   verifyPassword,
 } from "@/lib/auth";
-import { QUESTIONS, SLOTS, londonToday, scoreOf } from "@/lib/rounds";
+import { QUESTIONS, SLOTS, YEARS_OUT_LIMIT, londonToday, scoreOf } from "@/lib/rounds";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -88,13 +88,13 @@ export async function logout() {
   redirect("/login");
 }
 
-export type SavedGame = { answers: Record<string, boolean>; notes: string };
+export type SavedGame = { answers: Record<string, boolean>; notes: string; yearsOut: number | null };
 
 export async function loadGame(playedOn: string, slot: number): Promise<SavedGame | null> {
   const user = await requireUser();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(playedOn)) return null;
-  const rows = await query<{ round_key: string; points: number; notes: string }>(
-    `SELECT gr.round_key, gr.points, g.notes
+  const rows = await query<{ round_key: string; points: number; notes: string; years_out: number | null }>(
+    `SELECT gr.round_key, gr.points, g.notes, g.years_out
        FROM games g JOIN game_rounds gr ON gr.game_id = g.id
       WHERE g.user_id=$1 AND g.played_on=$2 AND g.slot=$3`,
     [user.id, playedOn, slot]
@@ -103,6 +103,7 @@ export async function loadGame(playedOn: string, slot: number): Promise<SavedGam
   return {
     answers: Object.fromEntries(rows.map((r) => [r.round_key, r.points > 0])),
     notes: rows[0].notes,
+    yearsOut: rows[0].years_out,
   };
 }
 
@@ -111,6 +112,7 @@ export async function saveGame(input: {
   slot: number;
   answers: Record<string, boolean>;
   notes: string;
+  yearsOut: number | null;
 }): Promise<FormState> {
   const user = await requireUser();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.playedOn)) return { error: "Invalid date." };
@@ -118,16 +120,22 @@ export async function saveGame(input: {
 
   if (!(SLOTS as readonly number[]).includes(input.slot)) return { error: "Invalid round." };
 
+  const yo = input.yearsOut;
+  if (yo !== null && (!Number.isInteger(yo) || Math.abs(yo) > YEARS_OUT_LIMIT)) {
+    return { error: `Years out must be a whole number between -${YEARS_OUT_LIMIT} and ${YEARS_OUT_LIMIT}.` };
+  }
+
   const total = scoreOf(input.answers);
   const rows: [string, number][] = QUESTIONS.map((q) => [q.key, input.answers[q.key] ? q.points : 0]);
   const notes = (input.notes ?? "").slice(0, 500);
 
   await withTx(async (c) => {
     const g = await c.query(
-      `INSERT INTO games(user_id, played_on, slot, total, notes) VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (user_id, played_on, slot) DO UPDATE SET total=EXCLUDED.total, notes=EXCLUDED.notes
+      `INSERT INTO games(user_id, played_on, slot, total, notes, years_out) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (user_id, played_on, slot)
+       DO UPDATE SET total=EXCLUDED.total, notes=EXCLUDED.notes, years_out=EXCLUDED.years_out
        RETURNING id`,
-      [user.id, input.playedOn, input.slot, total, notes]
+      [user.id, input.playedOn, input.slot, total, notes, yo]
     );
     const gid = g.rows[0].id as string;
     await c.query("DELETE FROM game_rounds WHERE game_id=$1", [gid]);
